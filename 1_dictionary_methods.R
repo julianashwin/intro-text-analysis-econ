@@ -7,48 +7,107 @@ rm(list = ls())
 
 require(stringr)
 require(tidyverse)
-require(SentimentAnalysis)
+require(tidytext)
 require(ggplot2)
+require(ggwordcloud)
 
 
-############### Minutes (pre 2014) ############### 
-fedminutes_df <- read.csv("data/fedminutes_clean.csv", stringsAsFactors = FALSE)
+std <- function(x){
+  x <- (x - mean(x, na.rm = T))/sd(x, na.rm = T)
+  return(x)
+}
+
+############### Examples of dictionaries ############### 
+affin <- get_sentiments("afinn")
+loughran <- get_sentiments("loughran")
+
+
+############### Import data ############### 
+# Minutes
+fedminutes_df <- read.csv("data/fedminutes_all.csv", stringsAsFactors = FALSE)
+# GDP growth 
+gdp_df <- read.csv("data/GDPC1.csv", stringsAsFactors = FALSE) %>%
+  rename(quarter = DATE, gdp = GDPC1) %>%
+  mutate(gdp_lag = lag(gdp), 
+         growth = 100*(log(gdp) - log(gdp_lag)),
+         quarter = as.Date(quarter))
+
+
+# Separate out words
+fedminutes_words <- fedminutes_df %>%
+  mutate(paragraph = str_remove_all(paragraph, "[0-9]+")) %>%
+  select(date, paragraph) %>%
+  unnest_tokens(word, paragraph) %>%
+  group_by(date) %>% count(word, sort = F) %>% ungroup() 
+fedminutes_words
+
+# Identify words from list
+fedminutes_sentiment <- fedminutes_words %>%
+  inner_join(get_sentiments("loughran"))
+
+# Look at the most relevant words in each category
+fedminutes_total <- fedminutes_sentiment %>%
+  group_by(word, sentiment) %>%
+  summarise(n = sum(n)) %>%
+  filter(n > 25)
+fedminutes_total
+# Plot frequent words
+ggplot(fedminutes_total, aes(label = word, size = n)) +
+  facet_wrap(.~sentiment) +
+  geom_text_wordcloud() +
+  theme_minimal()
+
+# Aggregate to meeting level 
+fedminutes_agg <- fedminutes_sentiment %>%
+  pivot_wider(id_cols = c(date, word), names_from = sentiment, values_from = n, values_fill = 0) %>%
+  mutate(quarter = floor_date(as.Date(date), unit = "quarter")) %>%
+  group_by(quarter) %>%
+  summarise(across(where(is.numeric), sum)) %>%
+  mutate(polarity = (positive - negative)/(1+positive+negative),
+         quarter = as.Date(quarter)) %>%
+  inner_join(gdp_df)
+  
+# Captures the GFC well, but not the Covid shock - not a conventional economic crisis!
+ggplot(filter(fedminutes_agg,quarter >= "2000-01-01")) + theme_bw() + 
+  geom_line(aes(x = quarter, y = growth, color = "GDP")) +
+  geom_line(aes(x = quarter, y = std(polarity), color = "loughran")) 
 
 
 
 
+############### Sentiment analysis packages ############### 
+# Aggregate the minutes to quarterly level 
+fedminutes_qly <- fedminutes_df %>%
+  mutate(quarter = floor_date(as.Date(date), unit = "quarter")) %>%
+  select(quarter, paragraph) %>%
+  group_by(quarter) %>%
+  summarise(text = paste(paragraph, collapse = "\n"))
+  
+# Vader 
+require(vader)
 
+text <- "Julian is a nice person"
+get_vader(text)
+text <- "Julian is a very nice person"
+get_vader(text)
+text <- "Julian is not a very nice person"
+get_vader(text)
 
-
-## Add an LM sentiment measure (loop else vector memory is exhausted)
-fedminutes.df$sentiment <- NA
-pb = txtProgressBar(min = 1, max = nrow(fedminutes.df), initial = 1) 
-for (ii in 1:nrow(fedminutes.df)){
-  para <- fedminutes.df$paragraph[ii]
-  sentiment <- analyzeSentiment(para,rules=list("SentimentLM"=list(ruleSentiment,loadDictionaryLM())))
-  fedminutes.df$sentiment[ii] <- sentiment[1,1]
+fedminutes_qly$vader <- NA
+pb = txtProgressBar(min = 1, max = nrow(fedminutes_qly), initial = 1) 
+for (ii in 1:nrow(fedminutes_qly)){
+  fedminutes_qly$vader[ii] <- get_vader(fedminutes_qly$text[ii])[2]
   setTxtProgressBar(pb,ii)
 }
 
-fedminutes.df$sentiment[which(is.na(fedminutes.df$sentiment))] <- 0
+# SentimentAnalysis package
+require(SentimentAnalysis)
 
-sent_df <- aggregate(fedminutes.df[,c("sentiment")], FUN = mean, by = 
-                       list(quarter = fedminutes.df$quarter))
-sent_df$quarter <- as.Date(sent_df$quarter)
-ggplot(sent_df) + theme_bw() + 
-  geom_line(aes(x = quarter, y = x))
+sentiment_df <- analyzeSentiment(fedminutes_df$paragraph)
 
 
 
 
-
-fedminutes.df <- fedminutes.df[, c("unique_id", "meeting_id", "year", "month", "quarter", "document", 
-                                   "pub_date", "meet_date", "source", "paragraph", "sentiment")]
-
-
-# Write the clean Federal Reserve minutes to a file
-clean_filename = paste0(clean_dir, "fedminutes_all.csv")
-write.csv(fedminutes.df, file = clean_filename, fileEncoding = "utf-8", row.names = FALSE)
 
 
 
