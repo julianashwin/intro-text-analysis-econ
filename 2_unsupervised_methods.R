@@ -60,13 +60,13 @@ doc_pca$doc_id <- rownames(doc_pca)
 
 embedding_df <- merge(embedding_df, doc_pca, by = "doc_id")
 embedding_df$Period <- "pre-2008"
-embedding_df$Period[which(embedding_df$quarter<="2008-01-01")] <- "2008-present"
+embedding_df$Period[which(embedding_df$quarter>="2008-01-01")] <- "2008-present"
 embedding_df$Recession <- as.numeric(embedding_df$growth<=0)
 
 ggplot(embedding_df) + theme_bw() + 
-  geom_point(aes(x = PC1, y = PC2, color = Period), alpha = 0.2)
+  geom_point(aes(x = PC1 , y = PC2, color = Period), alpha = 0.2)
 
-summary(lm(PC4~ Recession, embedding_df))
+summary(lm(PC4 ~ Recession, embedding_df))
 
 
 

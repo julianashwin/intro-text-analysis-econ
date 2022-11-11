@@ -23,3 +23,21 @@ fedminutes_df <- read.csv("data/fedminutes_clean.csv", stringsAsFactors = FALSE)
   mutate(quarter = floor_date(as.Date(date), unit = "quarter")) %>%
   left_join(gdp_df) %>%
   filter(quarter > "2000-01-01")
+
+
+
+
+
+
+# Models
+lgr::get_logger("mlr3")$set_threshold("warn")
+learner = lrn("regr.ranger", num.trees = 500, mtry = floor(sqrt(length(x_vars))), 
+              max.depth = 5, min.node.size = 2)
+#learner = lrn("regr.ranger", num.trees=500, mtry=6, max.depth=100, min.node.size=2)
+ml_l = learner$clone()
+ml_m = learner$clone()
+# Fit
+set.seed(3141)
+dml_noVol = DoubleMLPLR$new(dml_noVol_data, ml_l=ml_l, ml_m=ml_m)
+dml_noVol$fit()
+

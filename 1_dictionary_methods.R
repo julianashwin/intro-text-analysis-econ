@@ -10,7 +10,7 @@ require(tidyverse)
 require(tidytext)
 require(ggplot2)
 require(ggwordcloud)
-
+require(lubridate)
 
 std <- function(x){
   x <- (x - mean(x, na.rm = T))/sd(x, na.rm = T)
